@@ -1,0 +1,98 @@
+import pandas as pd
+import numpy as np
+from sklearn.neighbors import NearestNeighbors
+from fer import FER
+from PIL import Image
+import matplotlib.pyplot as plt
+
+# Load the books dataset, skipping any rows with errors
+books_path = '/content/books.csv'
+books_df = pd.read_csv(books_path, error_bad_lines=False)
+books_df = books_df.drop(columns=['isbn', 'isbn13', 'language_code', 'ratings_count', 'text_reviews_count', 'publication_date', 'publisher'])
+
+# Define the mood features for each book
+# Here, I'm using the average rating and number of pages as the features
+book_features = books_df[['average_rating', 'numpages']]
+book_features.columns = ['avg_rating', 'num_pages']  # assign feature names
+
+# Normalize the book features
+min_vals = book_features.min()
+max_vals = book_features.max()
+normalized_book_features = (book_features - min_vals) / (max_vals - min_vals)
+
+# Define colors for text output
+bright_red = "\033[0;91m"
+reset_color = "\033[0m"
+
+# Get image path from user input
+image_path = input("Enter the path to the image: ")
+
+# Read the image using Pillow and convert to numpy array
+image = Image.open(image_path)
+test_image = np.array(image)
+
+# Create an emotion detector object with MTCNN network
+emo_detector = FER(mtcnn=True)
+
+# Detect emotions in the image
+captured_emotions = emo_detector.detect_emotions(test_image)
+
+# Get the mood features from the detected emotions
+emotions_dict = captured_emotions[0]['emotions']
+mood_features = np.array([emotions_dict['happy'], emotions_dict['neutral']])
+
+# Normalize the mood features
+min_vals = np.zeros(len(mood_features))
+max_vals = np.ones(len(mood_features))
+normalized_mood_features = (mood_features - min_vals) / (max_vals - min_vals)
+
+# Ask user for the value of n_neighbors
+n_neighbors = int(input("Enter the No. of Books u want to recommend: "))
+
+# Fit a KNN model to the book features
+knn = NearestNeighbors(n_neighbors=n_neighbors)
+knn.fit(normalized_book_features)
+
+# Find the nearest books to the user's mood
+distances, indices = knn.kneighbors(normalized_mood_features.reshape(1, -1))
+
+# Print the detected mood
+mood = max(emotions_dict, key=emotions_dict.get)
+print(f"\nYour mood detected as: {bright_red}{mood}{reset_color}")
+
+# Compute the accuracy of the emotion detection
+total = 0
+correct = 0
+for i in range(len(captured_emotions)):
+    emotions_dict = captured_emotions[i]['emotions']
+    max_emotion = max(emotions_dict, key=emotions_dict.get)
+    if max_emotion in image_path:
+        correct += 1
+    total += 1
+accuracy = correct / total * 100
+print(f"Accuracy of emotion: {accuracy:.2f}%")
+
+# Display the image
+plt.imshow(test_image)
+plt.show()
+
+# Suggest messages based on the detected mood
+if mood == 'sad':
+    print("Message for you : It's okay to not be okay. Remember, tough times don't last but tough people do.")
+elif mood == 'angry':
+    print("Message for you : Anger is a natural emotion. Take deep breaths and focus on positive thoughts.")
+elif mood == 'disgust':
+    print("Message for you : Try to focus on the things that bring you joy and happiness.")
+elif mood == 'surprise':
+    print("Message for you : Take a moment to process and appreciate the surprise. Change can be good.")
+elif mood == 'fear':
+    print("Message for you : Fear is a natural response to the unknown. Remember to take things one step at a time and reach out for support.")
+elif mood == 'happy':
+    print("Message for you : Keep spreading happiness wherever you go. Life is too short to be anything but happy.")
+elif mood == 'neutral':
+    print("Message for you : It's okay to have neutral emotions. Take this time to relax and focus on self-care.")
+
+# Print the recommended books
+print("\nRecommended books for you:")
+for index in indices[0]:
+    print(f"Title: {books_df['title'][index]}\nAuthor: {books_df['authors'][index]}\n") 
